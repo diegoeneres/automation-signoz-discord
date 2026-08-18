@@ -15,6 +15,8 @@ from app.services import (
     alert_fingerprint,
     create_jira_issue,
     discord_message,
+    is_critical_alert,
+    send_critical_sms,
     send_to_discord,
     ticket_signature,
     valid_ticket_signature,
@@ -32,7 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await app.state.http.aclose()
 
 
-app = FastAPI(title="SigNoz → Discord → Jira", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="SigNoz → Discord, Jira e Zenvia", version="0.2.0", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -59,6 +61,16 @@ async def signoz_webhook(
         await send_to_discord(
             request.app.state.http, settings, discord_message(alert, alert_id, ticket_url)
         )
+        if settings.zenvia_enabled and is_critical_alert(alert):
+            claimed = request.app.state.store.claim_sms_sending(alert_id)
+            if claimed:
+                try:
+                    await send_critical_sms(request.app.state.http, settings, alert, alert_id)
+                    request.app.state.store.set_sms_sent(alert_id)
+                except Exception:
+                    request.app.state.store.release_sms_sending(alert_id)
+                    logger.exception("Falha ao enviar SMS para o alerta crítico %s", alert_id)
+                    raise HTTPException(status_code=502, detail="Falha ao enviar SMS pela Zenvia")
         sent += 1
     return {"received": len(payload.alerts), "sent": sent}
 

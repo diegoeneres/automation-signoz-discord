@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "signoz-discord-jira"
-version = "0.1.0"
-description = "Encaminha alertas do SigNoz ao Discord e cria tickets no Jira."
+version = "0.2.0"
+description = "Encaminha alertas do SigNoz ao Discord, Jira e Zenvia SMS."
 requires-python = ">=3.9"
 dependencies = [
   "fastapi>=0.116,<1",

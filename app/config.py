@@ -16,7 +16,16 @@ class Settings(BaseSettings):
     jira_project_key: str
     jira_issue_type: str = "Task"
     signoz_webhook_token: SecretStr
+    zenvia_enabled: bool = False
+    zenvia_api_token: SecretStr = SecretStr("")
+    zenvia_sms_from: str = ""
+    zenvia_sms_recipients: str = ""
+    zenvia_api_url: str = "https://api.zenvia.com/v2/channels/sms/messages"
     database_path: str = "data/service.db"
+
+    @property
+    def zenvia_recipients(self) -> list[str]:
+        return [number.strip() for number in self.zenvia_sms_recipients.split(",") if number.strip()]
 
 
 @lru_cache

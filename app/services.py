@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
+import unicodedata
 from typing import Any
 
 import httpx
@@ -25,6 +27,23 @@ def alert_description(alert: Alert) -> str:
     details = alert.annotations.get("description") or alert.annotations.get("message") or "Sem descrição."
     labels = "\n".join(f"- {key}: {value}" for key, value in sorted(alert.labels.items()))
     return f"{details}\n\nLabels:\n{labels or '- nenhum'}\n\nInício: {alert.startsAt or 'não informado'}"
+
+
+def is_critical_alert(alert: Alert) -> bool:
+    return (
+        alert.status.lower() != "resolved"
+        and str(alert.labels.get("severity", "")).strip().lower() == "critical"
+    )
+
+
+def sms_message(alert: Alert) -> str:
+    service = alert.labels.get("service") or alert.labels.get("job") or "n/a"
+    started_at = alert.startsAt or "n/a"
+    raw = f"CRITICAL SigNoz; alerta: {alert_title(alert)}; servico: {service}; inicio: {started_at}"
+    # Mantém o SMS no alfabeto GSM básico e evita a redução para 70 caracteres do UCS-2.
+    ascii_text = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode("ascii")
+    compact = re.sub(r"\s+", " ", ascii_text).strip()
+    return compact[:160].rstrip()
 
 
 def ticket_signature(alert_id: int, secret: str) -> str:
@@ -67,6 +86,28 @@ async def send_to_discord(client: httpx.AsyncClient, settings: Settings, message
         json=message,
     )
     response.raise_for_status()
+
+
+async def send_critical_sms(
+    client: httpx.AsyncClient, settings: Settings, alert: Alert, alert_id: int
+) -> None:
+    token = settings.zenvia_api_token.get_secret_value()
+    if not token or not settings.zenvia_sms_from or not settings.zenvia_recipients:
+        raise RuntimeError("Configuração da Zenvia incompleta")
+
+    headers = {"X-API-TOKEN": token, "Content-Type": "application/json"}
+    for recipient in settings.zenvia_recipients:
+        response = await client.post(
+            settings.zenvia_api_url,
+            headers=headers,
+            json={
+                "externalId": f"signoz-alert-{alert_id}",
+                "from": settings.zenvia_sms_from,
+                "to": recipient,
+                "contents": [{"type": "text", "text": sms_message(alert)}],
+            },
+        )
+        response.raise_for_status()
 
 
 async def create_jira_issue(client: httpx.AsyncClient, settings: Settings, alert: Alert) -> tuple[str, str]:

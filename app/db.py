@@ -21,10 +21,49 @@ class AlertStore:
                 jira_key TEXT,
                 jira_url TEXT,
                 jira_status TEXT NOT NULL DEFAULT 'pending',
+                sms_status TEXT NOT NULL DEFAULT 'pending',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )"""
         )
+        columns = {
+            row["name"] for row in self.connection.execute("PRAGMA table_info(alerts)").fetchall()
+        }
+        if "sms_status" not in columns:
+            self.connection.execute(
+                "ALTER TABLE alerts ADD COLUMN sms_status TEXT NOT NULL DEFAULT 'pending'"
+            )
         self.connection.commit()
+
+    def claim_sms_sending(self, alert_id: int) -> bool:
+        """Reserva atomicamente o envio de SMS e evita duplicação em retries."""
+        with self.lock:
+            self.connection.execute("BEGIN IMMEDIATE")
+            row = self.connection.execute(
+                "SELECT sms_status FROM alerts WHERE id = ?", (alert_id,)
+            ).fetchone()
+            if not row or row["sms_status"] != "pending":
+                self.connection.commit()
+                return False
+            self.connection.execute(
+                "UPDATE alerts SET sms_status = 'sending' WHERE id = ?", (alert_id,)
+            )
+            self.connection.commit()
+            return True
+
+    def set_sms_sent(self, alert_id: int) -> None:
+        with self.lock:
+            self.connection.execute(
+                "UPDATE alerts SET sms_status = 'sent' WHERE id = ?", (alert_id,)
+            )
+            self.connection.commit()
+
+    def release_sms_sending(self, alert_id: int) -> None:
+        with self.lock:
+            self.connection.execute(
+                "UPDATE alerts SET sms_status = 'pending' WHERE id = ? AND sms_status = 'sending'",
+                (alert_id,),
+            )
+            self.connection.commit()
 
     def claim_jira_creation(self, alert_id: int) -> tuple[str, Optional[dict[str, Any]]]:
         """Reserva atomicamente a criação; retorna claimed, creating, created ou missing."""

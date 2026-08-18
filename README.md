@@ -10,6 +10,8 @@ Serviço FastAPI que recebe alertas do SigNoz, publica cada alerta por um webhoo
 4. O usuário clica no botão, o serviço cria a issue e redireciona o navegador para o Jira.
 5. Cliques posteriores no mesmo alerta retornam o ticket existente.
 
+Quando um alerta ativo possui o label `severity=critical`, o serviço também envia um SMS pela Zenvia. O estado do envio fica persistido no SQLite para impedir SMS duplicados em retries do SigNoz.
+
 Alertas com status `resolved` são enviados sem o botão de criação.
 
 ## Executar com Docker
@@ -47,6 +49,31 @@ Não é necessário criar uma aplicação ou bot no Discord. O serviço envia o 
 3. Garanta que o usuário do token tenha as permissões **Browse Projects** e **Create Issues** nesse projeto.
 
 O campo `description` é enviado em Atlassian Document Format, exigido pela API v3.
+
+### Zenvia SMS
+
+1. Ative o canal SMS e crie um token no console da Zenvia.
+2. Identifique o alias da conta SMS configurada na plataforma.
+3. Configure no `.env`:
+
+```env
+ZENVIA_ENABLED=true
+ZENVIA_API_TOKEN=seu_token
+ZENVIA_SMS_FROM=seu_alias_sms
+ZENVIA_SMS_RECIPIENTS=5511999999999,5521999999999
+```
+
+Os destinatários devem conter o número completo, incluindo DDI, somente com dígitos. Para desabilitar o envio sem remover as credenciais, use `ZENVIA_ENABLED=false`.
+
+O SMS contém apenas criticidade, resumo do alerta, serviço e horário de início. A mensagem é normalizada para caracteres ASCII e limitada a 160 caracteres para permanecer em um único segmento SMS.
+
+A regra considera crítico um alerta ainda não resolvido cujo payload contenha:
+
+```json
+{"labels": {"severity": "critical"}}
+```
+
+O envio usa `POST https://api.zenvia.com/v2/channels/sms/messages` e autenticação pelo header `X-API-TOKEN`.
 
 ### SigNoz
 
