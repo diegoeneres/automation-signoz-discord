@@ -28,6 +28,24 @@ Teste a saúde:
 curl http://localhost/health
 ```
 
+### Imagem no GitHub Container Registry
+
+Todo push na branch `main`, incluindo merges de pull requests, executa a pipeline
+`.github/workflows/docker-publish.yml`. Ela publica a imagem no GHCR com duas tags:
+
+- `latest`, apontando para a publicação mais recente;
+- `sha-<commit>`, identificando de forma imutável o commit usado no build.
+
+Para baixar a versão mais recente:
+
+```bash
+docker pull ghcr.io/diegoeneres/automation-signoz-discord:latest
+```
+
+Pacotes privados exigem autenticação prévia com `docker login ghcr.io`. A publicação
+usa o `GITHUB_TOKEN` fornecido automaticamente pelo GitHub Actions, sem necessidade
+de cadastrar outro token no repositório.
+
 Em produção, publique o serviço por HTTPS e preserve o volume `service-data`.
 
 ## Configurar as integrações
