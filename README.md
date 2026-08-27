@@ -85,6 +85,23 @@ Os destinatários devem conter o número completo, incluindo DDI, somente com d�
 
 O SMS contém apenas criticidade, resumo do alerta, serviço e horário de início. A mensagem é normalizada para caracteres ASCII e limitada a 160 caracteres para permanecer em um único segmento SMS.
 
+Modelo da mensagem enviada:
+
+```text
+CRITICAL SigNoz; alerta: <resumo>; servico: <servico>; inicio: <data e hora>
+```
+
+Exemplo:
+
+```text
+CRITICAL SigNoz; alerta: CPU alta; servico: checkout; inicio: 2026-08-18T10:00:00Z
+```
+
+O resumo vem de `annotations.summary` ou, quando ausente, de `labels.alertname`.
+O serviço vem de `labels.service` ou, como alternativa, de `labels.job`. Campos sem
+valor são preenchidos com `n/a`, e o conteúdo excedente é truncado no limite de
+160 caracteres.
+
 A regra considera crítico um alerta ainda não resolvido cujo payload contenha:
 
 ```json
