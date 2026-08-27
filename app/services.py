@@ -38,8 +38,21 @@ def is_critical_alert(alert: Alert) -> bool:
 
 def sms_message(alert: Alert) -> str:
     service = alert.labels.get("service") or alert.labels.get("job") or "n/a"
+    host_name = alert.labels.get("host.name") or alert.labels.get("host_name") or "n/a"
+    client_id = (
+        alert.labels.get("client.id")
+        or alert.labels.get("client_id")
+        or alert.labels.get("customer.id")
+        or alert.labels.get("customer_id")
+        or alert.labels.get("cliente.id")
+        or alert.labels.get("cliente_id")
+        or "n/a"
+    )
     started_at = alert.startsAt or "n/a"
-    raw = f"CRITICAL SigNoz; alerta: {alert_title(alert)}; servico: {service}; inicio: {started_at}"
+    raw = (
+        f"CRITICAL SigNoz; cliente: {client_id}; host: {host_name}; "
+        f"alerta: {alert_title(alert)}; servico: {service}; inicio: {started_at}"
+    )
     # Mantém o SMS no alfabeto GSM básico e evita a redução para 70 caracteres do UCS-2.
     ascii_text = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode("ascii")
     compact = re.sub(r"\s+", " ", ascii_text).strip()

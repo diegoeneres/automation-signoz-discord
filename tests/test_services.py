@@ -48,14 +48,30 @@ def test_only_firing_critical_alert_triggers_sms() -> None:
 
 def test_sms_message_contains_alert_context() -> None:
     alert = Alert(
-        labels={"severity": "critical", "service": "checkout"},
+        labels={
+            "severity": "critical",
+            "service": "checkout",
+            "host.name": "checkout-01",
+            "client.id": "cliente-123",
+        },
         annotations={"summary": "CPU alta"},
         startsAt="2026-08-18T10:00:00Z",
     )
     message = sms_message(alert)
     assert "CPU alta" in message
     assert "checkout" in message
+    assert "checkout-01" in message
+    assert "cliente-123" in message
     assert len(message) <= 160
+
+
+def test_sms_message_accepts_host_and_client_label_aliases() -> None:
+    alert = Alert(labels={"host_name": "api-01", "cliente_id": "42"})
+
+    message = sms_message(alert)
+
+    assert "host: api-01" in message
+    assert "cliente: 42" in message
 
 
 def test_sms_message_is_single_segment_ascii() -> None:

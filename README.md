@@ -88,19 +88,21 @@ O SMS contém apenas criticidade, resumo do alerta, serviço e horário de iníc
 Modelo da mensagem enviada:
 
 ```text
-CRITICAL SigNoz; alerta: <resumo>; servico: <servico>; inicio: <data e hora>
+CRITICAL SigNoz; cliente: <id>; host: <host>; alerta: <resumo>; servico: <servico>; inicio: <data e hora>
 ```
 
 Exemplo:
 
 ```text
-CRITICAL SigNoz; alerta: CPU alta; servico: checkout; inicio: 2026-08-18T10:00:00Z
+CRITICAL SigNoz; cliente: cliente-123; host: checkout-01; alerta: CPU alta; servico: checkout; inicio: 2026-08-18T10:00:00Z
 ```
 
 O resumo vem de `annotations.summary` ou, quando ausente, de `labels.alertname`.
-O serviço vem de `labels.service` ou, como alternativa, de `labels.job`. Campos sem
-valor são preenchidos com `n/a`, e o conteúdo excedente é truncado no limite de
-160 caracteres.
+O serviço vem de `labels.service` ou, como alternativa, de `labels.job`. O host usa
+`labels["host.name"]`, com fallback para `labels.host_name`. O ID do cliente usa
+`labels["client.id"]` e também aceita `client_id`, `customer.id`, `customer_id`,
+`cliente.id` ou `cliente_id`. Campos sem valor são preenchidos com `n/a`, e o
+conteúdo excedente é truncado no limite de 160 caracteres.
 
 A regra considera crítico um alerta ainda não resolvido cujo payload contenha:
 
