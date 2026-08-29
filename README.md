@@ -83,25 +83,24 @@ ZENVIA_SMS_RECIPIENTS=5511999999999,5521999999999
 
 Os destinatários devem conter o número completo, incluindo DDI, somente com dígitos. Para desabilitar o envio sem remover as credenciais, use `ZENVIA_ENABLED=false`.
 
-O SMS contém apenas criticidade, resumo do alerta, serviço e horário de início. A mensagem é normalizada para caracteres ASCII e limitada a 160 caracteres para permanecer em um único segmento SMS.
+O SMS contém criticidade, `userid`, `host.name`, resumo do alerta, serviço e horário de início. A mensagem é normalizada para caracteres ASCII e limitada a 160 caracteres para permanecer em um único segmento SMS.
 
 Modelo da mensagem enviada:
 
 ```text
-CRITICAL SigNoz; cliente: <id>; host: <host>; alerta: <resumo>; servico: <servico>; inicio: <data e hora>
+CRITICAL SigNoz; userid: <userid>; host.name: <host>; alerta: <resumo>; servico: <servico>; inicio: <data e hora>
 ```
 
 Exemplo:
 
 ```text
-CRITICAL SigNoz; cliente: cliente-123; host: checkout-01; alerta: CPU alta; servico: checkout; inicio: 2026-08-18T10:00:00Z
+CRITICAL SigNoz; userid: usuario-123; host.name: checkout-01; alerta: CPU alta; servico: checkout; inicio: 2026-08-18T10:00:00Z
 ```
 
 O resumo vem de `annotations.summary` ou, quando ausente, de `labels.alertname`.
-O serviço vem de `labels.service` ou, como alternativa, de `labels.job`. O host usa
-`labels["host.name"]`, com fallback para `labels.host_name`. O ID do cliente usa
-`labels["client.id"]` e também aceita `client_id`, `customer.id`, `customer_id`,
-`cliente.id` ou `cliente_id`. Campos sem valor são preenchidos com `n/a`, e o
+O serviço vem de `labels.service` ou, como alternativa, de `labels.job`. O host e o
+usuário são obtidos diretamente de `labels["host.name"]` e `labels.userid`, conforme
+a estrutura do alerta no SigNoz. Campos sem valor são preenchidos com `n/a`, e o
 conteúdo excedente é truncado no limite de 160 caracteres.
 
 A regra considera crítico um alerta ainda não resolvido cujo payload contenha:

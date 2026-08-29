@@ -52,7 +52,7 @@ def test_sms_message_contains_alert_context() -> None:
             "severity": "critical",
             "service": "checkout",
             "host.name": "checkout-01",
-            "client.id": "cliente-123",
+            "userid": "usuario-123",
         },
         annotations={"summary": "CPU alta"},
         startsAt="2026-08-18T10:00:00Z",
@@ -60,18 +60,18 @@ def test_sms_message_contains_alert_context() -> None:
     message = sms_message(alert)
     assert "CPU alta" in message
     assert "checkout" in message
-    assert "checkout-01" in message
-    assert "cliente-123" in message
+    assert "host.name: checkout-01" in message
+    assert "userid: usuario-123" in message
     assert len(message) <= 160
 
 
-def test_sms_message_accepts_host_and_client_label_aliases() -> None:
-    alert = Alert(labels={"host_name": "api-01", "cliente_id": "42"})
+def test_sms_message_uses_na_when_host_name_and_userid_are_missing() -> None:
+    alert = Alert()
 
     message = sms_message(alert)
 
-    assert "host: api-01" in message
-    assert "cliente: 42" in message
+    assert "host.name: n/a" in message
+    assert "userid: n/a" in message
 
 
 def test_sms_message_is_single_segment_ascii() -> None:
