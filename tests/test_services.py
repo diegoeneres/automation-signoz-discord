@@ -1,9 +1,17 @@
+import asyncio
+from types import SimpleNamespace
+from urllib.parse import parse_qs
+
+import httpx
+from pydantic import SecretStr
+
 from app.models import Alert
 from app.services import (
     alert_description,
     alert_fingerprint,
     discord_message,
     is_critical_alert,
+    send_critical_sms,
     sms_message,
     ticket_signature,
     valid_ticket_signature,
@@ -84,3 +92,32 @@ def test_sms_message_is_single_segment_ascii() -> None:
     assert len(message) <= 160
     assert message.isascii()
     assert "Aplicacao indisponivel" in message
+
+
+def test_send_critical_sms_uses_twilio_api() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url == (
+            "https://api.twilio.com/2010-04-01/Accounts/"
+            "AC00000000000000000000000000000000/Messages.json"
+        )
+        assert request.headers["Authorization"].startswith("Basic ")
+        form = parse_qs(request.content.decode())
+        assert form["From"] == ["+15551234567"]
+        assert form["To"] == ["+5511999999999"]
+        assert "host.name: api-01" in form["Body"][0]
+        return httpx.Response(201, json={"sid": "SM00000000000000000000000000000000"})
+
+    settings = SimpleNamespace(
+        twilio_account_sid="AC00000000000000000000000000000000",
+        twilio_auth_token=SecretStr("auth-token"),
+        twilio_from_number="+15551234567",
+        twilio_recipients=["+5511999999999"],
+        twilio_api_base_url="https://api.twilio.com/2010-04-01",
+    )
+    alert = Alert(labels={"host.name": "api-01", "userid": "cliente-123"})
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            await send_critical_sms(client, settings, alert, 42)  # type: ignore[arg-type]
+
+    asyncio.run(run())

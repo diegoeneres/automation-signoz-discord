@@ -10,7 +10,7 @@ Serviço FastAPI que recebe alertas do SigNoz, publica cada alerta por um webhoo
 4. O usuário clica no botão, o serviço cria a issue e redireciona o navegador para o Jira.
 5. Cliques posteriores no mesmo alerta retornam o ticket existente.
 
-Quando um alerta ativo possui o label `severity=critical`, o serviço também envia um SMS pela Zenvia. O estado do envio fica persistido no SQLite para impedir SMS duplicados em retries do SigNoz.
+Quando um alerta ativo possui o label `severity=critical`, o serviço também envia um SMS pelo Twilio. O estado do envio fica persistido no SQLite para impedir SMS duplicados em retries do SigNoz.
 
 Alertas com status `resolved` são enviados sem o botão de criação.
 
@@ -68,20 +68,25 @@ Não é necessário criar uma aplicação ou bot no Discord. O serviço envia o 
 
 O campo `description` é enviado em Atlassian Document Format, exigido pela API v3.
 
-### Zenvia SMS
+### Twilio SMS
 
-1. Ative o canal SMS e crie um token no console da Zenvia.
-2. Identifique o alias da conta SMS configurada na plataforma.
-3. Configure no `.env`:
+1. No console do Twilio, obtenha o **Account SID** e o **Auth Token**.
+2. Adquira ou selecione um número Twilio habilitado para SMS.
+3. Informe os números no formato E.164, incluindo `+`, DDI e DDD.
+4. Configure no `.env`:
 
 ```env
-ZENVIA_ENABLED=true
-ZENVIA_API_TOKEN=seu_token
-ZENVIA_SMS_FROM=seu_alias_sms
-ZENVIA_SMS_RECIPIENTS=5511999999999,5521999999999
+TWILIO_ENABLED=true
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=seu_auth_token
+TWILIO_FROM_NUMBER=+15551234567
+TWILIO_SMS_RECIPIENTS=+5511999999999,+5521999999999
 ```
 
-Os destinatários devem conter o número completo, incluindo DDI, somente com dígitos. Para desabilitar o envio sem remover as credenciais, use `ZENVIA_ENABLED=false`.
+O número em `TWILIO_FROM_NUMBER` precisa pertencer à mesma conta Twilio e estar
+habilitado para SMS. Contas trial somente enviam para destinatários previamente
+verificados. Para desabilitar o envio sem remover as credenciais, use
+`TWILIO_ENABLED=false`.
 
 O SMS contém criticidade, `userid`, `host.name`, resumo do alerta, serviço e horário de início. A mensagem é normalizada para caracteres ASCII e limitada a 160 caracteres para permanecer em um único segmento SMS.
 
@@ -109,7 +114,8 @@ A regra considera crítico um alerta ainda não resolvido cujo payload contenha:
 {"labels": {"severity": "critical"}}
 ```
 
-O envio usa `POST https://api.zenvia.com/v2/channels/sms/messages` e autenticação pelo header `X-API-TOKEN`.
+O envio usa `POST https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages.json`,
+com autenticação HTTP Basic pelo Account SID e Auth Token.
 
 ### SigNoz
 

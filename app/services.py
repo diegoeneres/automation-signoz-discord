@@ -96,20 +96,27 @@ async def send_to_discord(client: httpx.AsyncClient, settings: Settings, message
 async def send_critical_sms(
     client: httpx.AsyncClient, settings: Settings, alert: Alert, alert_id: int
 ) -> None:
-    token = settings.zenvia_api_token.get_secret_value()
-    if not token or not settings.zenvia_sms_from or not settings.zenvia_recipients:
-        raise RuntimeError("Configuração da Zenvia incompleta")
+    auth_token = settings.twilio_auth_token.get_secret_value()
+    if (
+        not settings.twilio_account_sid
+        or not auth_token
+        or not settings.twilio_from_number
+        or not settings.twilio_recipients
+    ):
+        raise RuntimeError("Configuração do Twilio incompleta")
 
-    headers = {"X-API-TOKEN": token, "Content-Type": "application/json"}
-    for recipient in settings.zenvia_recipients:
+    url = (
+        f"{settings.twilio_api_base_url.rstrip('/')}/Accounts/"
+        f"{settings.twilio_account_sid}/Messages.json"
+    )
+    for recipient in settings.twilio_recipients:
         response = await client.post(
-            settings.zenvia_api_url,
-            headers=headers,
-            json={
-                "externalId": f"signoz-alert-{alert_id}",
-                "from": settings.zenvia_sms_from,
-                "to": recipient,
-                "contents": [{"type": "text", "text": sms_message(alert)}],
+            url,
+            auth=(settings.twilio_account_sid, auth_token),
+            data={
+                "From": settings.twilio_from_number,
+                "To": recipient,
+                "Body": sms_message(alert),
             },
         )
         response.raise_for_status()

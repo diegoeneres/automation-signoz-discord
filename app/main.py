@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await app.state.http.aclose()
 
 
-app = FastAPI(title="SigNoz → Discord, Jira e Zenvia", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="SigNoz → Discord, Jira e Twilio", version="0.3.0", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -61,7 +61,7 @@ async def signoz_webhook(
         await send_to_discord(
             request.app.state.http, settings, discord_message(alert, alert_id, ticket_url)
         )
-        if settings.zenvia_enabled and is_critical_alert(alert):
+        if settings.twilio_enabled and is_critical_alert(alert):
             claimed = request.app.state.store.claim_sms_sending(alert_id)
             if claimed:
                 try:
@@ -69,8 +69,8 @@ async def signoz_webhook(
                     request.app.state.store.set_sms_sent(alert_id)
                 except Exception:
                     request.app.state.store.release_sms_sending(alert_id)
-                    logger.exception("Falha ao enviar SMS para o alerta crítico %s", alert_id)
-                    raise HTTPException(status_code=502, detail="Falha ao enviar SMS pela Zenvia")
+                    logger.exception("Falha ao enviar SMS pelo Twilio para o alerta crítico %s", alert_id)
+                    raise HTTPException(status_code=502, detail="Falha ao enviar SMS pelo Twilio")
         sent += 1
     return {"received": len(payload.alerts), "sent": sent}
 
