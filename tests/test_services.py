@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from types import SimpleNamespace
 from urllib.parse import parse_qs
 
@@ -100,7 +101,8 @@ def test_send_critical_sms_uses_twilio_api() -> None:
             "https://api.twilio.com/2010-04-01/Accounts/"
             "AC00000000000000000000000000000000/Messages.json"
         )
-        assert request.headers["Authorization"].startswith("Basic ")
+        expected_auth = base64.b64encode(b"SK00000000000000000000000000000000:api-key-secret").decode()
+        assert request.headers["Authorization"] == f"Basic {expected_auth}"
         form = parse_qs(request.content.decode())
         assert form["From"] == ["+15551234567"]
         assert form["To"] == ["+5511999999999"]
@@ -109,7 +111,8 @@ def test_send_critical_sms_uses_twilio_api() -> None:
 
     settings = SimpleNamespace(
         twilio_account_sid="AC00000000000000000000000000000000",
-        twilio_auth_token=SecretStr("auth-token"),
+        twilio_api_key_sid="SK00000000000000000000000000000000",
+        twilio_api_key_secret=SecretStr("api-key-secret"),
         twilio_from_number="+15551234567",
         twilio_recipients=["+5511999999999"],
         twilio_api_base_url="https://api.twilio.com/2010-04-01",

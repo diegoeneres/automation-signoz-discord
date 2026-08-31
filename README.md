@@ -70,15 +70,19 @@ O campo `description` é enviado em Atlassian Document Format, exigido pela API 
 
 ### Twilio SMS
 
-1. No console do Twilio, obtenha o **Account SID** e o **Auth Token**.
-2. Adquira ou selecione um número Twilio habilitado para SMS.
-3. Informe os números no formato E.164, incluindo `+`, DDI e DDD.
-4. Configure no `.env`:
+1. No console do Twilio, copie o **Account SID**.
+2. Em **Settings → Account settings → API keys & auth tokens**, crie uma API Key
+   Standard e guarde o **API Key SID** e o **API Key Secret**. O secret é exibido
+   somente no momento da criação.
+3. Adquira ou selecione um número Twilio habilitado para SMS.
+4. Informe os números no formato E.164, incluindo `+`, DDI e DDD.
+5. Configure no `.env`:
 
 ```env
 TWILIO_ENABLED=true
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=seu_auth_token
+TWILIO_API_KEY_SID=SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_API_KEY_SECRET=seu_api_key_secret
 TWILIO_FROM_NUMBER=+15551234567
 TWILIO_SMS_RECIPIENTS=+5511999999999,+5521999999999
 ```
@@ -87,6 +91,20 @@ O número em `TWILIO_FROM_NUMBER` precisa pertencer à mesma conta Twilio e esta
 habilitado para SMS. Contas trial somente enviam para destinatários previamente
 verificados. Para desabilitar o envio sem remover as credenciais, use
 `TWILIO_ENABLED=false`.
+
+Para testar as credenciais e o envio diretamente pela API do Twilio, sem passar
+pelo webhook do SigNoz:
+
+```bash
+./scripts/test_twilio_sms.sh
+```
+
+Por padrão, o script carrega o `.env` e envia para o primeiro número definido em
+`TWILIO_SMS_RECIPIENTS`. Outro arquivo pode ser informado como argumento:
+
+```bash
+./scripts/test_twilio_sms.sh /caminho/para/.env
+```
 
 O SMS contém criticidade, `userid`, `host.name`, resumo do alerta, serviço e horário de início. A mensagem é normalizada para caracteres ASCII e limitada a 160 caracteres para permanecer em um único segmento SMS.
 
@@ -115,7 +133,8 @@ A regra considera crítico um alerta ainda não resolvido cujo payload contenha:
 ```
 
 O envio usa `POST https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages.json`,
-com autenticação HTTP Basic pelo Account SID e Auth Token.
+com autenticação HTTP Basic pelo API Key SID e API Key Secret. O Account SID
+continua sendo usado para identificar a conta na URL.
 
 ### SigNoz
 
