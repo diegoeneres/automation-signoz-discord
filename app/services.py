@@ -96,11 +96,22 @@ async def send_to_discord(client: httpx.AsyncClient, settings: Settings, message
 async def send_critical_sms(
     client: httpx.AsyncClient, settings: Settings, alert: Alert, alert_id: int
 ) -> None:
+    auth_token = settings.twilio_auth_token.get_secret_value()
     api_key_secret = settings.twilio_api_key_secret.get_secret_value()
+    if settings.twilio_api_key_sid and api_key_secret:
+        username = settings.twilio_api_key_sid
+        password = api_key_secret
+    elif settings.twilio_account_sid and auth_token:
+        username = settings.twilio_account_sid
+        password = auth_token
+    else:
+        raise RuntimeError(
+            "Configure TWILIO_AUTH_TOKEN ou o par "
+            "TWILIO_API_KEY_SID/TWILIO_API_KEY_SECRET"
+        )
+
     if (
         not settings.twilio_account_sid
-        or not settings.twilio_api_key_sid
-        or not api_key_secret
         or not settings.twilio_from_number
         or not settings.twilio_recipients
     ):
@@ -113,7 +124,7 @@ async def send_critical_sms(
     for recipient in settings.twilio_recipients:
         response = await client.post(
             url,
-            auth=(settings.twilio_api_key_sid, api_key_secret),
+            auth=(username, password),
             data={
                 "From": settings.twilio_from_number,
                 "To": recipient,

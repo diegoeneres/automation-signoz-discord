@@ -111,6 +111,7 @@ def test_send_critical_sms_uses_twilio_api() -> None:
 
     settings = SimpleNamespace(
         twilio_account_sid="AC00000000000000000000000000000000",
+        twilio_auth_token=SecretStr(""),
         twilio_api_key_sid="SK00000000000000000000000000000000",
         twilio_api_key_secret=SecretStr("api-key-secret"),
         twilio_from_number="+15551234567",
@@ -122,5 +123,30 @@ def test_send_critical_sms_uses_twilio_api() -> None:
     async def run() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             await send_critical_sms(client, settings, alert, 42)  # type: ignore[arg-type]
+
+    asyncio.run(run())
+
+
+def test_send_critical_sms_accepts_account_auth_token() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        expected_auth = base64.b64encode(
+            b"AC00000000000000000000000000000000:account-auth-token"
+        ).decode()
+        assert request.headers["Authorization"] == f"Basic {expected_auth}"
+        return httpx.Response(201, json={"sid": "SM00000000000000000000000000000000"})
+
+    settings = SimpleNamespace(
+        twilio_account_sid="AC00000000000000000000000000000000",
+        twilio_auth_token=SecretStr("account-auth-token"),
+        twilio_api_key_sid="",
+        twilio_api_key_secret=SecretStr(""),
+        twilio_from_number="+17372508034",
+        twilio_recipients=["+5541992782701"],
+        twilio_api_base_url="https://api.twilio.com/2010-04-01",
+    )
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            await send_critical_sms(client, settings, Alert(), 42)  # type: ignore[arg-type]
 
     asyncio.run(run())

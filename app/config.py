@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     signoz_webhook_token: SecretStr
     twilio_enabled: bool = False
     twilio_account_sid: str = ""
+    twilio_auth_token: SecretStr = SecretStr("")
     twilio_api_key_sid: str = ""
     twilio_api_key_secret: SecretStr = SecretStr("")
     twilio_from_number: str = ""

@@ -17,8 +17,6 @@ set +a
 
 required_variables=(
   TWILIO_ACCOUNT_SID
-  TWILIO_API_KEY_SID
-  TWILIO_API_KEY_SECRET
   TWILIO_FROM_NUMBER
   TWILIO_SMS_RECIPIENTS
 )
@@ -30,6 +28,17 @@ for variable in "${required_variables[@]}"; do
   fi
 done
 
+if [[ -n "${TWILIO_API_KEY_SID:-}" && -n "${TWILIO_API_KEY_SECRET:-}" ]]; then
+  auth_username="$TWILIO_API_KEY_SID"
+  auth_password="$TWILIO_API_KEY_SECRET"
+elif [[ -n "${TWILIO_AUTH_TOKEN:-}" ]]; then
+  auth_username="$TWILIO_ACCOUNT_SID"
+  auth_password="$TWILIO_AUTH_TOKEN"
+else
+  echo "Configure TWILIO_AUTH_TOKEN ou TWILIO_API_KEY_SID/TWILIO_API_KEY_SECRET" >&2
+  exit 1
+fi
+
 recipient="${TWILIO_SMS_RECIPIENTS%%,*}"
 recipient="${recipient//[[:space:]]/}"
 api_base_url="${TWILIO_API_BASE_URL:-https://api.twilio.com/2010-04-01}"
@@ -40,7 +49,7 @@ echo "Enviando SMS de teste de $TWILIO_FROM_NUMBER para $recipient..."
 
 curl --silent --show-error --fail-with-body \
   --request POST "$endpoint" \
-  --user "${TWILIO_API_KEY_SID}:${TWILIO_API_KEY_SECRET}" \
+  --user "${auth_username}:${auth_password}" \
   --data-urlencode "From=${TWILIO_FROM_NUMBER}" \
   --data-urlencode "To=${recipient}" \
   --data-urlencode "Body=${message}"

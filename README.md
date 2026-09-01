@@ -81,11 +81,15 @@ O campo `description` é enviado em Atlassian Document Format, exigido pela API 
 ```env
 TWILIO_ENABLED=true
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_API_KEY_SID=SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_API_KEY_SECRET=seu_api_key_secret
+TWILIO_AUTH_TOKEN=seu_auth_token
 TWILIO_FROM_NUMBER=+15551234567
 TWILIO_SMS_RECIPIENTS=+5511999999999,+5521999999999
 ```
+
+Essa configuracao com `Account SID` e `Auth Token` corresponde ao exemplo de
+teste exibido no console da Twilio. Em producao, voce tambem pode usar uma API
+Key definindo `TWILIO_API_KEY_SID` e `TWILIO_API_KEY_SECRET`; quando os dois
+estiverem preenchidos, eles tem prioridade sobre `TWILIO_AUTH_TOKEN`.
 
 O número em `TWILIO_FROM_NUMBER` precisa pertencer à mesma conta Twilio e estar
 habilitado para SMS. Contas trial somente enviam para destinatários previamente
