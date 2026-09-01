@@ -30,11 +30,19 @@ curl http://localhost/health
 
 ### Imagem no GitHub Container Registry
 
-Todo push na branch `main`, incluindo merges de pull requests, executa a pipeline
-`.github/workflows/docker-publish.yml`. Ela publica a imagem no GHCR com duas tags:
+Ao criar e enviar uma tag de versão como `v1.0.0` (ou `v.1.0.0`), a pipeline
+`.github/workflows/docker-publish.yml` publica a imagem no GHCR com três tags:
 
+- a própria tag de versão, como `v1.0.0`;
 - `latest`, apontando para a publicação mais recente;
 - `sha-<commit>`, identificando de forma imutável o commit usado no build.
+
+Exemplo de publicação:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
 
 Para baixar a versão mais recente:
 
