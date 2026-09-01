@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import re
 import unicodedata
 from typing import Any
@@ -10,6 +11,9 @@ import httpx
 
 from app.config import Settings
 from app.models import Alert
+
+
+logger = logging.getLogger(__name__)
 
 
 def alert_fingerprint(alert: Alert) -> str:
@@ -93,8 +97,8 @@ async def send_to_discord(client: httpx.AsyncClient, settings: Settings, message
     response.raise_for_status()
 
 
-async def send_critical_sms(
-    client: httpx.AsyncClient, settings: Settings, alert: Alert, alert_id: int
+async def send_twilio_sms(
+    client: httpx.AsyncClient, settings: Settings, alert: Alert, recipient: str
 ) -> None:
     auth_token = settings.twilio_auth_token.get_secret_value()
     api_key_secret = settings.twilio_api_key_secret.get_secret_value()
@@ -113,7 +117,6 @@ async def send_critical_sms(
     if (
         not settings.twilio_account_sid
         or not settings.twilio_from_number
-        or not settings.twilio_recipients
     ):
         raise RuntimeError("Configuração do Twilio incompleta")
 
@@ -122,17 +125,78 @@ async def send_critical_sms(
         f"{settings.twilio_account_sid}/Messages.json"
     )
     body = settings.twilio_sms_template or sms_message(alert)
-    for recipient in settings.twilio_recipients:
-        response = await client.post(
-            url,
-            auth=(username, password),
-            data={
-                "From": settings.twilio_from_number,
-                "To": recipient,
-                "Body": body,
-            },
-        )
-        response.raise_for_status()
+    response = await client.post(
+        url,
+        auth=(username, password),
+        data={
+            "From": settings.twilio_from_number,
+            "To": recipient,
+            "Body": body,
+        },
+    )
+    response.raise_for_status()
+
+
+async def send_infobip_sms(
+    client: httpx.AsyncClient, settings: Settings, alert: Alert, recipient: str
+) -> None:
+    api_key = settings.infobip_api_key.get_secret_value()
+    if not settings.infobip_base_url or not api_key or not settings.infobip_sender:
+        raise RuntimeError("Configuração da Infobip incompleta")
+
+    response = await client.post(
+        f"{settings.infobip_base_url.rstrip('/')}/sms/3/messages",
+        headers={"Authorization": f"App {api_key}", "Accept": "application/json"},
+        json={
+            "messages": [{
+                "sender": settings.infobip_sender,
+                "destinations": [{"to": recipient}],
+                "content": {"text": sms_message(alert)},
+            }]
+        },
+    )
+    response.raise_for_status()
+
+
+async def send_critical_sms(
+    client: httpx.AsyncClient, settings: Settings, alert: Alert, alert_id: int
+) -> None:
+    recipients = settings.critical_sms_recipients
+    if not recipients:
+        raise RuntimeError("Nenhum destinatário de SMS configurado")
+
+    enabled_providers = [
+        provider
+        for provider in settings.sms_provider_order
+        if (provider == "twilio" and settings.twilio_enabled)
+        or (provider == "infobip" and settings.infobip_enabled)
+    ]
+    if not enabled_providers:
+        raise RuntimeError("Nenhum provedor de SMS habilitado")
+
+    senders = {"twilio": send_twilio_sms, "infobip": send_infobip_sms}
+    for recipient in recipients:
+        last_error: Exception | None = None
+        for provider in enabled_providers:
+            try:
+                await senders[provider](client, settings, alert, recipient)
+                logger.info(
+                    "SMS do alerta %s enviado para %s via %s", alert_id, recipient, provider
+                )
+                break
+            except Exception as error:
+                last_error = error
+                logger.warning(
+                    "Falha no envio do alerta %s para %s via %s; tentando fallback",
+                    alert_id,
+                    recipient,
+                    provider,
+                    exc_info=True,
+                )
+        else:
+            raise RuntimeError(
+                f"Todos os provedores de SMS falharam para {recipient}"
+            ) from last_error
 
 
 async def create_jira_issue(client: httpx.AsyncClient, settings: Settings, alert: Alert) -> tuple[str, str]:

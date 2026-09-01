@@ -118,6 +118,10 @@ def test_send_critical_sms_uses_twilio_api() -> None:
         twilio_recipients=["+5511999999999"],
         twilio_sms_template="",
         twilio_api_base_url="https://api.twilio.com/2010-04-01",
+        twilio_enabled=True,
+        infobip_enabled=False,
+        critical_sms_recipients=["+5511999999999"],
+        sms_provider_order=["twilio", "infobip"],
     )
     alert = Alert(labels={"host.name": "api-01", "userid": "cliente-123"})
 
@@ -147,6 +151,10 @@ def test_send_critical_sms_accepts_account_auth_token() -> None:
         twilio_recipients=["+5541992782701"],
         twilio_sms_template="sms_internal_alerts",
         twilio_api_base_url="https://api.twilio.com/2010-04-01",
+        twilio_enabled=True,
+        infobip_enabled=False,
+        critical_sms_recipients=["+5541992782701"],
+        sms_provider_order=["twilio", "infobip"],
     )
 
     async def run() -> None:
@@ -154,3 +162,45 @@ def test_send_critical_sms_accepts_account_auth_token() -> None:
             await send_critical_sms(client, settings, Alert(), 42)  # type: ignore[arg-type]
 
     asyncio.run(run())
+
+
+def test_send_critical_sms_falls_back_to_infobip() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.host == "api.twilio.com":
+            return httpx.Response(503, json={"message": "Twilio unavailable"})
+
+        assert request.url == "https://tenant.api.infobip.com/sms/3/messages"
+        assert request.headers["Authorization"] == "App infobip-api-key"
+        payload = __import__("json").loads(request.content)
+        message = payload["messages"][0]
+        assert message["sender"] == "Alertas"
+        assert message["destinations"] == [{"to": "+5541999999999"}]
+        assert "CRITICAL SigNoz" in message["content"]["text"]
+        return httpx.Response(200, json={"messages": [{"messageId": "abc"}]})
+
+    settings = SimpleNamespace(
+        twilio_account_sid="AC00000000000000000000000000000000",
+        twilio_auth_token=SecretStr("account-auth-token"),
+        twilio_api_key_sid="",
+        twilio_api_key_secret=SecretStr(""),
+        twilio_from_number="+18137568678",
+        twilio_sms_template="",
+        twilio_api_base_url="https://api.twilio.com/2010-04-01",
+        twilio_enabled=True,
+        infobip_enabled=True,
+        infobip_base_url="https://tenant.api.infobip.com",
+        infobip_api_key=SecretStr("infobip-api-key"),
+        infobip_sender="Alertas",
+        critical_sms_recipients=["+5541999999999"],
+        sms_provider_order=["twilio", "infobip"],
+    )
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            await send_critical_sms(client, settings, Alert(), 42)  # type: ignore[arg-type]
+
+    asyncio.run(run())
+    assert [request.url.host for request in requests] == ["api.twilio.com", "tenant.api.infobip.com"]

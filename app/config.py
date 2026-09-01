@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     jira_project_key: str
     jira_issue_type: str = "Task"
     signoz_webhook_token: SecretStr
+    sms_providers: str = "twilio,infobip"
+    sms_recipients: str = ""
     twilio_enabled: bool = False
     twilio_account_sid: str = ""
     twilio_auth_token: SecretStr = SecretStr("")
@@ -25,11 +27,28 @@ class Settings(BaseSettings):
     twilio_sms_recipients: str = ""
     twilio_sms_template: str = ""
     twilio_api_base_url: str = "https://api.twilio.com/2010-04-01"
+    infobip_enabled: bool = False
+    infobip_base_url: str = ""
+    infobip_api_key: SecretStr = SecretStr("")
+    infobip_sender: str = ""
     database_path: str = "data/service.db"
 
     @property
     def twilio_recipients(self) -> list[str]:
         return [number.strip() for number in self.twilio_sms_recipients.split(",") if number.strip()]
+
+    @property
+    def critical_sms_recipients(self) -> list[str]:
+        configured = self.sms_recipients or self.twilio_sms_recipients
+        return [number.strip() for number in configured.split(",") if number.strip()]
+
+    @property
+    def sms_provider_order(self) -> list[str]:
+        return [provider.strip().lower() for provider in self.sms_providers.split(",") if provider.strip()]
+
+    @property
+    def sms_enabled(self) -> bool:
+        return self.twilio_enabled or self.infobip_enabled
 
 
 @lru_cache

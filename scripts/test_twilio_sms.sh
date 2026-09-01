@@ -18,7 +18,6 @@ set +a
 required_variables=(
   TWILIO_ACCOUNT_SID
   TWILIO_FROM_NUMBER
-  TWILIO_SMS_RECIPIENTS
 )
 
 for variable in "${required_variables[@]}"; do
@@ -39,8 +38,13 @@ else
   exit 1
 fi
 
-recipient="${TWILIO_SMS_RECIPIENTS%%,*}"
+recipients="${SMS_RECIPIENTS:-${TWILIO_SMS_RECIPIENTS:-}}"
+recipient="${recipients%%,*}"
 recipient="${recipient//[[:space:]]/}"
+if [[ -z "$recipient" ]]; then
+  echo "Configure SMS_RECIPIENTS ou TWILIO_SMS_RECIPIENTS" >&2
+  exit 1
+fi
 api_base_url="${TWILIO_API_BASE_URL:-https://api.twilio.com/2010-04-01}"
 message="${TWILIO_SMS_TEMPLATE:-Teste local Twilio - automation-signoz-discord - $(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 endpoint="${api_base_url%/}/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json"

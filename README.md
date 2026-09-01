@@ -10,7 +10,7 @@ Serviço FastAPI que recebe alertas do SigNoz, publica cada alerta por um webhoo
 4. O usuário clica no botão, o serviço cria a issue e redireciona o navegador para o Jira.
 5. Cliques posteriores no mesmo alerta retornam o ticket existente.
 
-Quando um alerta ativo possui o label `severity=critical`, o serviço também envia um SMS pelo Twilio. O estado do envio fica persistido no SQLite para impedir SMS duplicados em retries do SigNoz.
+Quando um alerta ativo possui o label `severity=critical`, o serviço também envia um SMS. É possível usar Twilio como provedor principal e Infobip como fallback. O estado do envio fica persistido no SQLite para impedir SMS duplicados em retries do SigNoz.
 
 Alertas com status `resolved` são enviados sem o botão de criação.
 
@@ -126,6 +126,30 @@ Por padrão, o script carrega o `.env` e envia para o primeiro número definido 
 ```
 
 O SMS contém criticidade, `userid`, `host.name`, resumo do alerta, serviço e horário de início. A mensagem é normalizada para caracteres ASCII e limitada a 160 caracteres para permanecer em um único segmento SMS.
+
+### Infobip como fallback
+
+Crie uma API Key na Infobip com o escopo `sms:message:send` e copie a Base URL
+exclusiva da conta. Configure:
+
+```env
+SMS_PROVIDERS=twilio,infobip
+SMS_RECIPIENTS=+5511999999999,+5521999999999
+
+TWILIO_ENABLED=true
+INFOBIP_ENABLED=true
+INFOBIP_BASE_URL=https://xxxxx.api.infobip.com
+INFOBIP_API_KEY=sua_api_key
+INFOBIP_SENDER=Alertas
+```
+
+Para cada destinatário, o serviço tenta os provedores na ordem definida em
+`SMS_PROVIDERS`. Com `twilio,infobip`, a Infobip só é acionada quando a Twilio
+retorna erro. Para usar somente Infobip, defina `TWILIO_ENABLED=false` e mantenha
+`INFOBIP_ENABLED=true`.
+
+O remetente precisa estar autorizado na conta Infobip. Em contas trial, use o
+sender de teste indicado no painel e envie apenas para números verificados.
 
 Modelo da mensagem enviada:
 
