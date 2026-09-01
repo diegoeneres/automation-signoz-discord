@@ -42,7 +42,7 @@ fi
 recipient="${TWILIO_SMS_RECIPIENTS%%,*}"
 recipient="${recipient//[[:space:]]/}"
 api_base_url="${TWILIO_API_BASE_URL:-https://api.twilio.com/2010-04-01}"
-message="Teste local Twilio - automation-signoz-discord - $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+message="${TWILIO_SMS_TEMPLATE:-Teste local Twilio - automation-signoz-discord - $(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 endpoint="${api_base_url%/}/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json"
 
 echo "Enviando SMS de teste de $TWILIO_FROM_NUMBER para $recipient..."

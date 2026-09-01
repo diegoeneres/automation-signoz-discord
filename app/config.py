@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     twilio_api_key_secret: SecretStr = SecretStr("")
     twilio_from_number: str = ""
     twilio_sms_recipients: str = ""
+    twilio_sms_template: str = ""
     twilio_api_base_url: str = "https://api.twilio.com/2010-04-01"
     database_path: str = "data/service.db"
 

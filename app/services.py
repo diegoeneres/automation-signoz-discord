@@ -121,6 +121,7 @@ async def send_critical_sms(
         f"{settings.twilio_api_base_url.rstrip('/')}/Accounts/"
         f"{settings.twilio_account_sid}/Messages.json"
     )
+    body = settings.twilio_sms_template or sms_message(alert)
     for recipient in settings.twilio_recipients:
         response = await client.post(
             url,
@@ -128,7 +129,7 @@ async def send_critical_sms(
             data={
                 "From": settings.twilio_from_number,
                 "To": recipient,
-                "Body": sms_message(alert),
+                "Body": body,
             },
         )
         response.raise_for_status()

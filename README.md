@@ -84,12 +84,19 @@ TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_AUTH_TOKEN=seu_auth_token
 TWILIO_FROM_NUMBER=+15551234567
 TWILIO_SMS_RECIPIENTS=+5511999999999,+5521999999999
+TWILIO_SMS_TEMPLATE=sms_internal_alerts
 ```
 
 Essa configuracao com `Account SID` e `Auth Token` corresponde ao exemplo de
 teste exibido no console da Twilio. Em producao, voce tambem pode usar uma API
 Key definindo `TWILIO_API_KEY_SID` e `TWILIO_API_KEY_SECRET`; quando os dois
 estiverem preenchidos, eles tem prioridade sobre `TWILIO_AUTH_TOKEN`.
+
+Contas trial recentes somente aceitam templates SMS predefinidos. Nesse caso,
+informe em `TWILIO_SMS_TEMPLATE` o nome exato mostrado no console da Twilio,
+como `sms_internal_alerts`. O template substitui a mensagem dinamica do alerta.
+Ao fazer upgrade para acesso completo, remova ou deixe essa variavel vazia para
+voltar a enviar criticidade, host, usuario, servico e horario no corpo do SMS.
 
 O número em `TWILIO_FROM_NUMBER` precisa pertencer à mesma conta Twilio e estar
 habilitado para SMS. Contas trial somente enviam para destinatários previamente

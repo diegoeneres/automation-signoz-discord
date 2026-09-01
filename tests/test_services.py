@@ -116,6 +116,7 @@ def test_send_critical_sms_uses_twilio_api() -> None:
         twilio_api_key_secret=SecretStr("api-key-secret"),
         twilio_from_number="+15551234567",
         twilio_recipients=["+5511999999999"],
+        twilio_sms_template="",
         twilio_api_base_url="https://api.twilio.com/2010-04-01",
     )
     alert = Alert(labels={"host.name": "api-01", "userid": "cliente-123"})
@@ -133,6 +134,8 @@ def test_send_critical_sms_accepts_account_auth_token() -> None:
             b"AC00000000000000000000000000000000:account-auth-token"
         ).decode()
         assert request.headers["Authorization"] == f"Basic {expected_auth}"
+        form = parse_qs(request.content.decode())
+        assert form["Body"] == ["sms_internal_alerts"]
         return httpx.Response(201, json={"sid": "SM00000000000000000000000000000000"})
 
     settings = SimpleNamespace(
@@ -142,6 +145,7 @@ def test_send_critical_sms_accepts_account_auth_token() -> None:
         twilio_api_key_secret=SecretStr(""),
         twilio_from_number="+17372508034",
         twilio_recipients=["+5541992782701"],
+        twilio_sms_template="sms_internal_alerts",
         twilio_api_base_url="https://api.twilio.com/2010-04-01",
     )
 
