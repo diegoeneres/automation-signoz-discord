@@ -221,6 +221,30 @@ uvicorn app.main:app --reload
 
 Para o Discord e o SigNoz alcançarem sua máquina, exponha a porta 80 por HTTPS com o túnel de sua preferência.
 
+## Observabilidade da aplicação no SigNoz
+
+A aplicação envia traces das requisições FastAPI, chamadas HTTP externas e operações
+SQLite, logs correlacionados aos traces e métricas via OTLP/HTTP. Configure no `.env`:
+
+```env
+OTEL_SERVICE_NAME=signoz-discord-jira
+OTEL_EXPORTER_OTLP_ENDPOINT=https://ingest.<region>.signoz.cloud:443
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_HEADERS=signoz-ingestion-key=SEU_TOKEN
+OTEL_EXPORTER_OTLP_COMPRESSION=gzip
+OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,service.version=0.4.0
+```
+
+Copie o endpoint regional e a ingestion key em **Settings → Ingestion Settings**
+no SigNoz Cloud. Não acrescente `/v1/traces`, `/v1/metrics` ou `/v1/logs` ao
+endpoint: o exporter OTLP/HTTP adiciona esses caminhos automaticamente. A chave
+de ingestão deve permanecer apenas no `.env`, que não é incluído na imagem.
+
+Sem `OTEL_EXPORTER_OTLP_ENDPOINT` (ou com `OTEL_SDK_DISABLED=true`), a instrumentação
+fica desativada. As métricas de negócio são `app.alerts.received`,
+`app.notifications.sent`, `app.notifications.failures` e `app.jira.tickets.created`.
+
 ## Endpoints
 
 - `GET /health` — health check.

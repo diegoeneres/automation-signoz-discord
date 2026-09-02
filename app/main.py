@@ -21,6 +21,13 @@ from app.services import (
     ticket_signature,
     valid_ticket_signature,
 )
+from app.telemetry import (
+    alerts_received,
+    configure_telemetry,
+    notification_failures,
+    notifications_sent,
+    tickets_created,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +39,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.http = httpx.AsyncClient(timeout=15)
     yield
     await app.state.http.aclose()
+    if app.state.telemetry:
+        app.state.telemetry.shutdown()
 
 
 app = FastAPI(title="SigNoz → Discord, Jira e SMS", version="0.4.0", lifespan=lifespan)
+app.state.telemetry = configure_telemetry(app)
 
 
 @app.get("/health")
@@ -54,13 +64,20 @@ async def signoz_webhook(
         raise HTTPException(status_code=401, detail="Token do webhook inválido")
 
     sent = 0
+    alerts_received.add(len(payload.alerts), {"webhook.status": payload.status})
     for alert in payload.alerts:
         alert_id = request.app.state.store.put(alert_fingerprint(alert), alert.model_dump())
         signature = ticket_signature(alert_id, settings.ticket_signing_secret.get_secret_value())
         ticket_url = f"{settings.public_base_url.rstrip('/')}/tickets/{alert_id}/create?signature={signature}"
-        await send_to_discord(
-            request.app.state.http, settings, discord_message(alert, alert_id, ticket_url)
-        )
+        try:
+            await send_to_discord(
+                request.app.state.http, settings, discord_message(alert, alert_id, ticket_url)
+            )
+        except Exception:
+            notification_failures.add(1, {"channel": "discord"})
+            logger.exception("Falha ao enviar o alerta %s ao Discord", alert_id)
+            raise
+        notifications_sent.add(1, {"channel": "discord"})
         if settings.sms_enabled and is_critical_alert(alert):
             claimed = request.app.state.store.claim_sms_sending(alert_id)
             if claimed:
@@ -69,8 +86,11 @@ async def signoz_webhook(
                     request.app.state.store.set_sms_sent(alert_id)
                 except Exception:
                     request.app.state.store.release_sms_sending(alert_id)
+                    notification_failures.add(1, {"channel": "sms"})
                     logger.exception("Falha em todos os provedores de SMS para o alerta crítico %s", alert_id)
                     raise HTTPException(status_code=502, detail="Falha ao enviar SMS")
+                else:
+                    notifications_sent.add(1, {"channel": "sms"})
         sent += 1
     return {"received": len(payload.alerts), "sent": sent}
 
@@ -103,6 +123,7 @@ async def create_ticket_from_discord(
                 request.app.state.http, settings, Alert.model_validate(record["payload"])
             )
             request.app.state.store.set_jira(alert_id, key, url)
+            tickets_created.add(1)
             return RedirectResponse(url, status_code=303)
     except HTTPException:
         raise
@@ -110,6 +131,7 @@ async def create_ticket_from_discord(
         if claimed:
             request.app.state.store.release_jira_creation(alert_id)
         logger.exception("Falha ao criar ticket para o alerta %s", alert_id)
+        notification_failures.add(1, {"channel": "jira"})
         return HTMLResponse(
             "<h1>Falha ao criar ticket</h1><p>Consulte os logs do serviço e tente novamente.</p>",
             status_code=502,

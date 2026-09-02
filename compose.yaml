@@ -2,6 +2,8 @@ services:
   app:
     build: .
     env_file: .env
+    environment:
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-signoz-discord-jira}
     ports:
       - "80:80"
     volumes:
