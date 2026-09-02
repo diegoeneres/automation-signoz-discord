@@ -144,8 +144,12 @@ async def send_infobip_sms(
     if not settings.infobip_base_url or not api_key or not settings.infobip_sender:
         raise RuntimeError("Configuração da Infobip incompleta")
 
+    base_url = settings.infobip_base_url.strip().rstrip("/")
+    if not base_url.startswith(("http://", "https://")):
+        base_url = f"https://{base_url.lstrip('/')}"
+
     response = await client.post(
-        f"{settings.infobip_base_url.rstrip('/')}/sms/3/messages",
+        f"{base_url}/sms/3/messages",
         headers={"Authorization": f"App {api_key}", "Accept": "application/json"},
         json={
             "messages": [{

@@ -191,7 +191,7 @@ def test_send_critical_sms_falls_back_to_infobip() -> None:
         twilio_api_base_url="https://api.twilio.com/2010-04-01",
         twilio_enabled=True,
         infobip_enabled=True,
-        infobip_base_url="https://tenant.api.infobip.com",
+        infobip_base_url="/tenant.api.infobip.com",
         infobip_api_key=SecretStr("infobip-api-key"),
         infobip_sender="Alertas",
         critical_sms_recipients=["+5541999999999"],
