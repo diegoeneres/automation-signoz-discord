@@ -233,6 +233,8 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_EXPORTER_OTLP_HEADERS=signoz-ingestion-key=SEU_TOKEN
 OTEL_EXPORTER_OTLP_COMPRESSION=gzip
 OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
+OTEL_METRIC_EXPORT_INTERVAL=60000
+OTEL_LOG_LEVEL=INFO
 OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,service.version=0.4.0
 ```
 
@@ -244,6 +246,9 @@ de ingestão deve permanecer apenas no `.env`, que não é incluído na imagem.
 Sem `OTEL_EXPORTER_OTLP_ENDPOINT` (ou com `OTEL_SDK_DISABLED=true`), a instrumentação
 fica desativada. As métricas de negócio são `app.alerts.received`,
 `app.notifications.sent`, `app.notifications.failures` e `app.jira.tickets.created`.
+Também são exportadas métricas HTTP do FastAPI/HTTPX e métricas de processo e runtime,
+como uso de CPU, memória e garbage collection. Logs emitidos pelos módulos `app.*`
+são enviados com `trace_id` e `span_id`, permitindo navegar do log para o trace.
 
 ## Endpoints
 

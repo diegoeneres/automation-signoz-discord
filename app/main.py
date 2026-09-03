@@ -92,6 +92,11 @@ async def signoz_webhook(
                 else:
                     notifications_sent.add(1, {"channel": "sms"})
         sent += 1
+    logger.info(
+        "Webhook do SigNoz processado: recebidos=%s enviados=%s",
+        len(payload.alerts),
+        sent,
+    )
     return {"received": len(payload.alerts), "sent": sent}
 
 
@@ -124,6 +129,7 @@ async def create_ticket_from_discord(
             )
             request.app.state.store.set_jira(alert_id, key, url)
             tickets_created.add(1)
+            logger.info("Ticket %s criado no Jira para o alerta %s", key, alert_id)
             return RedirectResponse(url, status_code=303)
     except HTTPException:
         raise

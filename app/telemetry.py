@@ -12,6 +12,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
+from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrumentor
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
@@ -55,10 +56,18 @@ def configure_telemetry(app: FastAPI) -> Telemetry | None:
     logger_provider = LoggerProvider(resource=resource)
     logger_provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter()))
     logging.getLogger().addHandler(LoggingHandler(logger_provider=logger_provider))
+    log_level_name = os.getenv("OTEL_LOG_LEVEL", "INFO").upper()
+    log_level = getattr(logging, log_level_name, logging.INFO)
+    logging.getLogger("app").setLevel(log_level)
 
     FastAPIInstrumentor.instrument_app(app)
     HTTPXClientInstrumentor().instrument()
     SQLite3Instrumentor().instrument()
+    SystemMetricsInstrumentor().instrument(meter_provider=meter_provider)
+    logging.getLogger(__name__).info(
+        "OpenTelemetry habilitado para traces, metricas e logs; service.name=%s",
+        os.getenv("OTEL_SERVICE_NAME", "signoz-discord-jira"),
+    )
     return Telemetry(tracer_provider, meter_provider, logger_provider)
 
 
