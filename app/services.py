@@ -1,19 +1,47 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import logging
 import re
 import unicodedata
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind
 
 from app.config import Settings
 from app.models import Alert
 
 
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer("signoz-discord-jira.integrations")
+
+
+def _integration_attributes(
+    alert: Alert, alert_id: int, channel: str, provider: str
+) -> dict[str, str | int]:
+    return {
+        "alert.id": alert_id,
+        "alert.name": alert_title(alert),
+        "alert.severity": alert_severity(alert),
+        "client.id": alert_client(alert),
+        "notification.channel": channel,
+        "external.system": provider,
+    }
+
+
+def _set_destination(span: trace.Span, url: str) -> None:
+    parsed = urlparse(url)
+    # Do not attach the full URL: Discord webhook paths contain credentials.
+    if parsed.hostname:
+        span.set_attribute("server.address", parsed.hostname)
+        span.set_attribute("destination.address", parsed.hostname)
+    if parsed.port:
+        span.set_attribute("server.port", parsed.port)
+    if parsed.scheme:
+        span.set_attribute("url.scheme", parsed.scheme)
 
 
 def alert_fingerprint(alert: Alert) -> str:
@@ -25,6 +53,19 @@ def alert_fingerprint(alert: Alert) -> str:
 
 def alert_title(alert: Alert) -> str:
     return str(alert.annotations.get("summary") or alert.labels.get("alertname") or "Alerta do SigNoz")
+
+
+def alert_client(alert: Alert) -> str:
+    """Return a stable client identifier without logging the full alert payload."""
+    for label in ("client", "cliente", "customer", "customer_id", "host.name", "userid"):
+        value = alert.labels.get(label)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return "nao informado"
+
+
+def alert_severity(alert: Alert) -> str:
+    return str(alert.labels.get("severity") or "nao informada").strip().lower()
 
 
 def alert_description(alert: Alert) -> str:
@@ -55,15 +96,7 @@ def sms_message(alert: Alert) -> str:
     return compact[:160].rstrip()
 
 
-def ticket_signature(alert_id: int, secret: str) -> str:
-    return hmac.new(secret.encode(), str(alert_id).encode(), hashlib.sha256).hexdigest()
-
-
-def valid_ticket_signature(alert_id: int, signature: str, secret: str) -> bool:
-    return hmac.compare_digest(ticket_signature(alert_id, secret), signature)
-
-
-def discord_message(alert: Alert, alert_id: int, ticket_url: str) -> dict[str, Any]:
+def discord_message(alert: Alert) -> dict[str, Any]:
     severity = str(alert.labels.get("severity", "warning")).lower()
     color = {"critical": 0xED4245, "error": 0xED4245, "warning": 0xFEE75C}.get(severity, 0x5865F2)
     fields = [
@@ -79,22 +112,32 @@ def discord_message(alert: Alert, alert_id: int, ticket_url: str) -> dict[str, A
     }
     if alert.generatorURL:
         embed["url"] = alert.generatorURL
-    components = []
-    if alert.status.lower() != "resolved":
-        components = [{
-            "type": 1,
-            "components": [{"type": 2, "style": 5, "label": "Criar ticket no Jira", "url": ticket_url}],
-        }]
-    return {"embeds": [embed], "components": components, "allowed_mentions": {"parse": []}}
+    return {"embeds": [embed], "allowed_mentions": {"parse": []}}
 
 
-async def send_to_discord(client: httpx.AsyncClient, settings: Settings, message: dict[str, Any]) -> None:
-    response = await client.post(
-        settings.discord_webhook_url.get_secret_value(),
-        params={"with_components": "true", "wait": "true"},
-        json=message,
-    )
-    response.raise_for_status()
+async def send_to_discord(
+    client: httpx.AsyncClient,
+    settings: Settings,
+    message: dict[str, Any],
+    alert: Alert,
+    alert_id: int,
+) -> None:
+    url = settings.discord_webhook_url.get_secret_value()
+    with tracer.start_as_current_span(
+        "notification.discord.send",
+        kind=SpanKind.CLIENT,
+        attributes=_integration_attributes(alert, alert_id, "discord", "discord"),
+    ) as span:
+        _set_destination(span, url)
+        try:
+            response = await client.post(url, params={"wait": "true"}, json=message)
+            span.set_attribute("http.response.status_code", response.status_code)
+            response.raise_for_status()
+        except Exception:
+            span.set_attribute("event.outcome", "failure")
+            raise
+        else:
+            span.set_attribute("event.outcome", "success")
 
 
 async def send_twilio_sms(
@@ -125,16 +168,16 @@ async def send_twilio_sms(
         f"{settings.twilio_account_sid}/Messages.json"
     )
     body = settings.twilio_sms_template or sms_message(alert)
-    response = await client.post(
-        url,
-        auth=(username, password),
-        data={
-            "From": settings.twilio_from_number,
-            "To": recipient,
-            "Body": body,
-        },
-    )
-    response.raise_for_status()
+    with tracer.start_as_current_span("external.twilio.http", kind=SpanKind.CLIENT) as span:
+        _set_destination(span, url)
+        span.set_attribute("external.system", "twilio")
+        response = await client.post(
+            url,
+            auth=(username, password),
+            data={"From": settings.twilio_from_number, "To": recipient, "Body": body},
+        )
+        span.set_attribute("http.response.status_code", response.status_code)
+        response.raise_for_status()
 
 
 async def send_infobip_sms(
@@ -148,18 +191,23 @@ async def send_infobip_sms(
     if not base_url.startswith(("http://", "https://")):
         base_url = f"https://{base_url.lstrip('/')}"
 
-    response = await client.post(
-        f"{base_url}/sms/3/messages",
-        headers={"Authorization": f"App {api_key}", "Accept": "application/json"},
-        json={
-            "messages": [{
-                "sender": settings.infobip_sender,
-                "destinations": [{"to": recipient}],
-                "content": {"text": sms_message(alert)},
-            }]
-        },
-    )
-    response.raise_for_status()
+    url = f"{base_url}/sms/3/messages"
+    with tracer.start_as_current_span("external.infobip.http", kind=SpanKind.CLIENT) as span:
+        _set_destination(span, url)
+        span.set_attribute("external.system", "infobip")
+        response = await client.post(
+            url,
+            headers={"Authorization": f"App {api_key}", "Accept": "application/json"},
+            json={
+                "messages": [{
+                    "sender": settings.infobip_sender,
+                    "destinations": [{"to": recipient}],
+                    "content": {"text": sms_message(alert)},
+                }]
+            },
+        )
+        span.set_attribute("http.response.status_code", response.status_code)
+        response.raise_for_status()
 
 
 async def send_critical_sms(
@@ -179,53 +227,45 @@ async def send_critical_sms(
         raise RuntimeError("Nenhum provedor de SMS habilitado")
 
     senders = {"twilio": send_twilio_sms, "infobip": send_infobip_sms}
-    for recipient in recipients:
-        last_error: Exception | None = None
-        for provider in enabled_providers:
-            try:
-                await senders[provider](client, settings, alert, recipient)
-                logger.info(
-                    "SMS do alerta %s enviado para %s via %s", alert_id, recipient, provider
-                )
-                break
-            except Exception as error:
-                last_error = error
-                logger.warning(
-                    "Falha no envio do alerta %s para %s via %s; tentando fallback",
-                    alert_id,
-                    recipient,
-                    provider,
-                    exc_info=True,
-                )
-        else:
-            raise RuntimeError(
-                f"Todos os provedores de SMS falharam para {recipient}"
-            ) from last_error
+    with tracer.start_as_current_span(
+        "notification.sms.send",
+        attributes={
+            **_integration_attributes(alert, alert_id, "sms", "sms"),
+            "messaging.destination_count": len(recipients),
+        },
+    ) as sms_span:
+        for recipient in recipients:
+            last_error: Exception | None = None
+            for provider in enabled_providers:
+                try:
+                    with tracer.start_as_current_span(
+                        "notification.sms.provider.send",
+                        kind=SpanKind.CLIENT,
+                        attributes=_integration_attributes(alert, alert_id, "sms", provider),
+                    ) as provider_span:
+                        try:
+                            await senders[provider](client, settings, alert, recipient)
+                        except Exception:
+                            provider_span.set_attribute("event.outcome", "failure")
+                            raise
+                        else:
+                            provider_span.set_attribute("event.outcome", "success")
+                    logger.info(
+                        "SMS do alerta %s enviado via %s", alert_id, provider
+                    )
+                    break
+                except Exception as error:
+                    last_error = error
+                    logger.warning(
+                        "Falha no envio do alerta %s via %s; tentando fallback",
+                        alert_id,
+                        provider,
+                        exc_info=True,
+                    )
+            else:
+                raise RuntimeError(
+                    f"Todos os provedores de SMS falharam para {recipient}"
+                ) from last_error
+        sms_span.set_attribute("event.outcome", "success")
 
 
-async def create_jira_issue(client: httpx.AsyncClient, settings: Settings, alert: Alert) -> tuple[str, str]:
-    payload = {
-        "fields": {
-            "project": {"key": settings.jira_project_key},
-            "issuetype": {"name": settings.jira_issue_type},
-            "summary": alert_title(alert)[:255],
-            "description": {
-                "type": "doc",
-                "version": 1,
-                "content": [{
-                    "type": "paragraph",
-                    "content": [{"type": "text", "text": alert_description(alert)[:30000]}],
-                }],
-            },
-            "labels": ["signoz", "monitoring"],
-        }
-    }
-    response = await client.post(
-        f"{settings.jira_base_url.rstrip('/')}/rest/api/3/issue",
-        auth=(settings.jira_email, settings.jira_api_token.get_secret_value()),
-        headers={"Accept": "application/json"},
-        json=payload,
-    )
-    response.raise_for_status()
-    key = response.json()["key"]
-    return key, f"{settings.jira_base_url.rstrip('/')}/browse/{key}"

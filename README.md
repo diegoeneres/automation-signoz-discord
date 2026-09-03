@@ -1,18 +1,15 @@
-# SigNoz → Discord → Jira
+# SigNoz → Discord e SMS
 
-Serviço FastAPI que recebe alertas do SigNoz, publica cada alerta por um webhook do Discord e adiciona o botão **Criar ticket no Jira**. O clique cria uma issue no Jira Cloud e abre o ticket no navegador.
+Serviço FastAPI que recebe alertas do SigNoz e publica cada alerta no Discord, com envio opcional de SMS para alertas críticos.
 
 ## Fluxo
 
 1. O SigNoz envia um payload compatível com Alertmanager para `POST /webhooks/signoz`.
 2. O serviço persiste o alerta no SQLite e publica um embed usando o webhook do Discord.
-3. O botão contém um link assinado para o FastAPI.
-4. O usuário clica no botão, o serviço cria a issue e redireciona o navegador para o Jira.
-5. Cliques posteriores no mesmo alerta retornam o ticket existente.
 
 Quando um alerta ativo possui o label `severity=critical`, o serviço também envia um SMS. É possível usar Twilio como provedor principal e Infobip como fallback. O estado do envio fica persistido no SQLite para impedir SMS duplicados em retries do SigNoz.
 
-Alertas com status `resolved` são enviados sem o botão de criação.
+Alertas com status `resolved` continuam sendo publicados no Discord, sem envio de SMS.
 
 ## Executar com Docker
 
@@ -63,18 +60,8 @@ Em produção, publique o serviço por HTTPS e preserve o volume `service-data`.
 1. No canal desejado, abra **Editar canal → Integrações → Webhooks**.
 2. Crie um webhook e copie sua URL.
 3. Informe a URL em `DISCORD_WEBHOOK_URL` no `.env`.
-4. Configure `PUBLIC_BASE_URL` com a URL HTTPS pública deste serviço.
-5. Gere um valor longo e aleatório para `TICKET_SIGNING_SECRET`.
 
-Não é necessário criar uma aplicação ou bot no Discord. O serviço envia o parâmetro `with_components=true`, necessário para o webhook respeitar o botão-link. Somente links assinados pelo serviço conseguem acionar a criação de tickets.
-
-### Jira Cloud
-
-1. Gere um token em [Atlassian API tokens](https://id.atlassian.com/manage-profile/security/api-tokens).
-2. Informe a URL do site, e-mail, token, chave do projeto e tipo da issue no `.env`.
-3. Garanta que o usuário do token tenha as permissões **Browse Projects** e **Create Issues** nesse projeto.
-
-O campo `description` é enviado em Atlassian Document Format, exigido pela API v3.
+Não é necessário criar uma aplicação ou bot no Discord.
 
 ### Twilio SMS
 
@@ -223,7 +210,7 @@ Para o Discord e o SigNoz alcançarem sua máquina, exponha a porta 80 por HTTPS
 
 ## Observabilidade da aplicação no SigNoz
 
-A aplicação envia traces das requisições FastAPI, chamadas HTTP externas e operações
+A aplicação envia traces das requisições FastAPI, integrações externas e operações
 SQLite, logs correlacionados aos traces e métricas via OTLP/HTTP. Configure no `.env`:
 
 ```env
@@ -245,14 +232,28 @@ de ingestão deve permanecer apenas no `.env`, que não é incluído na imagem.
 
 Sem `OTEL_EXPORTER_OTLP_ENDPOINT` (ou com `OTEL_SDK_DISABLED=true`), a instrumentação
 fica desativada. As métricas de negócio são `app.alerts.received`,
-`app.notifications.sent`, `app.notifications.failures` e `app.jira.tickets.created`.
-Também são exportadas métricas HTTP do FastAPI/HTTPX e métricas de processo e runtime,
+`app.notifications.sent` e `app.notifications.failures`.
+Também são exportadas métricas HTTP do FastAPI e métricas de processo e runtime,
 como uso de CPU, memória e garbage collection. Logs emitidos pelos módulos `app.*`
 são enviados com `trace_id` e `span_id`, permitindo navegar do log para o trace.
+Os logs de processamento incluem os atributos estruturados `event.name`, `event.outcome`,
+`alert.id`, `alert.name`, `alert.severity`, `client.id` e `notification.channel`. O cliente
+é obtido do primeiro label disponível entre `client`, `cliente`, `customer`,
+`customer_id`, `host.name` e `userid`.
+
+Os traces possuem spans específicos para cada destino externo:
+
+- `notification.discord.send` — envio do alerta ao Discord;
+- `notification.sms.send` — operação completa de envio de SMS;
+- `notification.sms.provider.send` — cada tentativa na Twilio ou Infobip;
+- `external.twilio.http` e `external.infobip.http` — chamada HTTP ao provedor.
+
+Use `external.system`, `server.address`, `notification.channel`, `event.outcome`,
+`alert.name`, `alert.severity` e `client.id` para filtrar os spans. URLs completas de
+webhooks, credenciais e números de telefone não são adicionados aos spans customizados.
 
 ## Endpoints
 
 - `GET /health` — health check.
 - `POST /webhooks/signoz` — recebe alertas; exige Bearer token.
-- `GET /tickets/{id}/create` — cria ou abre o ticket; exige assinatura válida no link.
 - `GET /docs` — documentação OpenAPI do FastAPI.

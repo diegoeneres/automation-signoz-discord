@@ -10,7 +10,6 @@ from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
 from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrumentor
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
@@ -61,7 +60,6 @@ def configure_telemetry(app: FastAPI) -> Telemetry | None:
     logging.getLogger("app").setLevel(log_level)
 
     FastAPIInstrumentor.instrument_app(app)
-    HTTPXClientInstrumentor().instrument()
     SQLite3Instrumentor().instrument()
     SystemMetricsInstrumentor().instrument(meter_provider=meter_provider)
     logging.getLogger(__name__).info(
@@ -75,4 +73,3 @@ meter = metrics.get_meter("signoz-discord-jira")
 alerts_received = meter.create_counter("app.alerts.received", unit="{alert}")
 notifications_sent = meter.create_counter("app.notifications.sent", unit="{notification}")
 notification_failures = meter.create_counter("app.notifications.failures", unit="{failure}")
-tickets_created = meter.create_counter("app.jira.tickets.created", unit="{ticket}")

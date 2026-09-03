@@ -8,14 +8,14 @@ from pydantic import SecretStr
 
 from app.models import Alert
 from app.services import (
+    alert_client,
     alert_description,
     alert_fingerprint,
+    alert_severity,
     discord_message,
     is_critical_alert,
     send_critical_sms,
     sms_message,
-    ticket_signature,
-    valid_ticket_signature,
 )
 
 
@@ -24,17 +24,16 @@ def test_fingerprint_is_stable_without_upstream_fingerprint() -> None:
     assert alert_fingerprint(alert) == alert_fingerprint(alert)
 
 
-def test_discord_message_has_jira_button_for_firing_alert() -> None:
+def test_discord_message_contains_alert_without_components() -> None:
     alert = Alert(status="firing", labels={"severity": "critical"}, annotations={"summary": "Falha"})
-    message = discord_message(alert, 42, "https://alerts.example.com/tickets/42/create?signature=abc")
-    button = message["components"][0]["components"][0]
-    assert button["style"] == 5
-    assert button["url"].startswith("https://alerts.example.com/tickets/42/create")
+    message = discord_message(alert)
+    assert message["embeds"][0]["title"] == "Falha"
+    assert "components" not in message
     assert message["embeds"][0]["color"] == 0xED4245
 
 
-def test_resolved_alert_has_no_ticket_button() -> None:
-    assert discord_message(Alert(status="resolved"), 1, "https://example.com")["components"] == []
+def test_resolved_alert_has_no_components() -> None:
+    assert "components" not in discord_message(Alert(status="resolved"))
 
 
 def test_description_contains_labels() -> None:
@@ -43,10 +42,21 @@ def test_description_contains_labels() -> None:
     assert "service: checkout" in text
 
 
-def test_ticket_link_signature() -> None:
-    signature = ticket_signature(42, "secret")
-    assert valid_ticket_signature(42, signature, "secret")
-    assert not valid_ticket_signature(43, signature, "secret")
+def test_alert_client_uses_supported_labels_in_priority_order() -> None:
+    alert = Alert(labels={"client": "acme", "host.name": "host-01", "userid": "fallback-user"})
+    assert alert_client(alert) == "acme"
+    assert alert_client(Alert(labels={"host.name": "cliente-host-01"})) == "cliente-host-01"
+    assert (
+        alert_client(Alert(labels={"host.name": "cliente-host-01", "userid": "user-42"}))
+        == "cliente-host-01"
+    )
+    assert alert_client(Alert(labels={"userid": "user-42"})) == "user-42"
+    assert alert_client(Alert()) == "nao informado"
+
+
+def test_alert_severity_is_normalized() -> None:
+    assert alert_severity(Alert(labels={"severity": "CRITICAL"})) == "critical"
+    assert alert_severity(Alert()) == "nao informada"
 
 
 def test_only_firing_critical_alert_triggers_sms() -> None:

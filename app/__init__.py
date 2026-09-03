@@ -1,2 +1,2 @@
-"""SigNoz, Discord and Jira integration service."""
+"""SigNoz, Discord and SMS integration service."""
 
