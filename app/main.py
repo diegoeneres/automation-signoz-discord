@@ -49,6 +49,7 @@ app.state.telemetry = configure_telemetry(app)
 
 @app.get("/health")
 async def health() -> dict[str, str]:
+    logger.info("Health check concluido com sucesso")
     return {"status": "ok"}
 
 
