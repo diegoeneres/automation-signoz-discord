@@ -180,36 +180,6 @@ async def send_twilio_sms(
         response.raise_for_status()
 
 
-async def send_infobip_sms(
-    client: httpx.AsyncClient, settings: Settings, alert: Alert, recipient: str
-) -> None:
-    api_key = settings.infobip_api_key.get_secret_value()
-    if not settings.infobip_base_url or not api_key or not settings.infobip_sender:
-        raise RuntimeError("Configuração da Infobip incompleta")
-
-    base_url = settings.infobip_base_url.strip().rstrip("/")
-    if not base_url.startswith(("http://", "https://")):
-        base_url = f"https://{base_url.lstrip('/')}"
-
-    url = f"{base_url}/sms/3/messages"
-    with tracer.start_as_current_span("external.infobip.http", kind=SpanKind.CLIENT) as span:
-        _set_destination(span, url)
-        span.set_attribute("external.system", "infobip")
-        response = await client.post(
-            url,
-            headers={"Authorization": f"App {api_key}", "Accept": "application/json"},
-            json={
-                "messages": [{
-                    "sender": settings.infobip_sender,
-                    "destinations": [{"to": recipient}],
-                    "content": {"text": sms_message(alert)},
-                }]
-            },
-        )
-        span.set_attribute("http.response.status_code", response.status_code)
-        response.raise_for_status()
-
-
 async def send_critical_sms(
     client: httpx.AsyncClient, settings: Settings, alert: Alert, alert_id: int
 ) -> None:
@@ -217,16 +187,9 @@ async def send_critical_sms(
     if not recipients:
         raise RuntimeError("Nenhum destinatário de SMS configurado")
 
-    enabled_providers = [
-        provider
-        for provider in settings.sms_provider_order
-        if (provider == "twilio" and settings.twilio_enabled)
-        or (provider == "infobip" and settings.infobip_enabled)
-    ]
-    if not enabled_providers:
-        raise RuntimeError("Nenhum provedor de SMS habilitado")
+    if not settings.twilio_enabled:
+        raise RuntimeError("Twilio não está habilitado")
 
-    senders = {"twilio": send_twilio_sms, "infobip": send_infobip_sms}
     with tracer.start_as_current_span(
         "notification.sms.send",
         attributes={
@@ -235,37 +198,20 @@ async def send_critical_sms(
         },
     ) as sms_span:
         for recipient in recipients:
-            last_error: Exception | None = None
-            for provider in enabled_providers:
+            with tracer.start_as_current_span(
+                "notification.sms.provider.send",
+                kind=SpanKind.CLIENT,
+                attributes=_integration_attributes(alert, alert_id, "sms", "twilio"),
+            ) as provider_span:
                 try:
-                    with tracer.start_as_current_span(
-                        "notification.sms.provider.send",
-                        kind=SpanKind.CLIENT,
-                        attributes=_integration_attributes(alert, alert_id, "sms", provider),
-                    ) as provider_span:
-                        try:
-                            await senders[provider](client, settings, alert, recipient)
-                        except Exception:
-                            provider_span.set_attribute("event.outcome", "failure")
-                            raise
-                        else:
-                            provider_span.set_attribute("event.outcome", "success")
-                    logger.info(
-                        "SMS do alerta %s enviado via %s", alert_id, provider
-                    )
-                    break
-                except Exception as error:
-                    last_error = error
-                    logger.warning(
-                        "Falha no envio do alerta %s via %s; tentando fallback",
-                        alert_id,
-                        provider,
-                        exc_info=True,
-                    )
-            else:
-                raise RuntimeError(
-                    f"Todos os provedores de SMS falharam para {recipient}"
-                ) from last_error
+                    await send_twilio_sms(client, settings, alert, recipient)
+                except Exception:
+                    provider_span.set_attribute("event.outcome", "failure")
+                    logger.exception("Falha no envio do alerta %s via Twilio", alert_id)
+                    raise
+                else:
+                    provider_span.set_attribute("event.outcome", "success")
+            logger.info("SMS do alerta %s enviado via Twilio", alert_id)
         sms_span.set_attribute("event.outcome", "success")
 
 

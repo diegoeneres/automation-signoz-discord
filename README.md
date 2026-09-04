@@ -7,7 +7,7 @@ Serviço FastAPI que recebe alertas do SigNoz e publica cada alerta no Discord, 
 1. O SigNoz envia um payload compatível com Alertmanager para `POST /webhooks/signoz`.
 2. O serviço persiste o alerta no SQLite e publica um embed usando o webhook do Discord.
 
-Quando um alerta ativo possui o label `severity=critical`, o serviço também envia um SMS. É possível usar Twilio como provedor principal e Infobip como fallback. O estado do envio fica persistido no SQLite para impedir SMS duplicados em retries do SigNoz.
+Quando um alerta ativo possui o label `severity=critical`, o serviço também envia um SMS pela Twilio. O estado do envio fica persistido no SQLite para impedir SMS duplicados em retries do SigNoz.
 
 Alertas com status `resolved` continuam sendo publicados no Discord, sem envio de SMS.
 
@@ -76,16 +76,15 @@ Não é necessário criar uma aplicação ou bot no Discord.
 ```env
 TWILIO_ENABLED=true
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=seu_auth_token
+TWILIO_API_KEY_SID=SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_API_KEY_SECRET=seu_api_key_secret
 TWILIO_FROM_NUMBER=+15551234567
-TWILIO_SMS_RECIPIENTS=+5511999999999,+5521999999999
+SMS_RECIPIENTS=+5511999999999,+5521999999999
 TWILIO_SMS_TEMPLATE=sms_internal_alerts
 ```
 
-Essa configuracao com `Account SID` e `Auth Token` corresponde ao exemplo de
-teste exibido no console da Twilio. Em producao, voce tambem pode usar uma API
-Key definindo `TWILIO_API_KEY_SID` e `TWILIO_API_KEY_SECRET`; quando os dois
-estiverem preenchidos, eles tem prioridade sobre `TWILIO_AUTH_TOKEN`.
+Também é possível autenticar com `TWILIO_AUTH_TOKEN`; quando a API Key SID e o
+API Key Secret estão preenchidos, eles têm prioridade sobre o Auth Token.
 
 Contas trial recentes somente aceitam templates SMS predefinidos. Nesse caso,
 informe em `TWILIO_SMS_TEMPLATE` o nome exato mostrado no console da Twilio,
@@ -106,37 +105,13 @@ pelo webhook do SigNoz:
 ```
 
 Por padrão, o script carrega o `.env` e envia para o primeiro número definido em
-`TWILIO_SMS_RECIPIENTS`. Outro arquivo pode ser informado como argumento:
+`SMS_RECIPIENTS` (ou na variável legada `TWILIO_SMS_RECIPIENTS`). Outro arquivo pode ser informado como argumento:
 
 ```bash
 ./scripts/test_twilio_sms.sh /caminho/para/.env
 ```
 
 O SMS contém criticidade, `userid`, `host.name`, resumo do alerta, serviço e horário de início. A mensagem é normalizada para caracteres ASCII e limitada a 160 caracteres para permanecer em um único segmento SMS.
-
-### Infobip como fallback
-
-Crie uma API Key na Infobip com o escopo `sms:message:send` e copie a Base URL
-exclusiva da conta. Configure:
-
-```env
-SMS_PROVIDERS=twilio,infobip
-SMS_RECIPIENTS=+5511999999999,+5521999999999
-
-TWILIO_ENABLED=true
-INFOBIP_ENABLED=true
-INFOBIP_BASE_URL=https://xxxxx.api.infobip.com
-INFOBIP_API_KEY=sua_api_key
-INFOBIP_SENDER=Alertas
-```
-
-Para cada destinatário, o serviço tenta os provedores na ordem definida em
-`SMS_PROVIDERS`. Com `twilio,infobip`, a Infobip só é acionada quando a Twilio
-retorna erro. Para usar somente Infobip, defina `TWILIO_ENABLED=false` e mantenha
-`INFOBIP_ENABLED=true`.
-
-O remetente precisa estar autorizado na conta Infobip. Em contas trial, use o
-sender de teste indicado no painel e envie apenas para números verificados.
 
 Modelo da mensagem enviada:
 
@@ -245,8 +220,8 @@ Os traces possuem spans específicos para cada destino externo:
 
 - `notification.discord.send` — envio do alerta ao Discord;
 - `notification.sms.send` — operação completa de envio de SMS;
-- `notification.sms.provider.send` — cada tentativa na Twilio ou Infobip;
-- `external.twilio.http` e `external.infobip.http` — chamada HTTP ao provedor.
+- `notification.sms.provider.send` — tentativa de envio pela Twilio;
+- `external.twilio.http` — chamada HTTP à Twilio.
 
 Use `external.system`, `server.address`, `notification.channel`, `event.outcome`,
 `alert.name`, `alert.severity` e `client.id` para filtrar os spans. URLs completas de

@@ -9,7 +9,6 @@ class Settings(BaseSettings):
 
     discord_webhook_url: SecretStr
     signoz_webhook_token: SecretStr
-    sms_providers: str = "twilio,infobip"
     sms_recipients: str = ""
     twilio_enabled: bool = False
     twilio_account_sid: str = ""
@@ -20,10 +19,6 @@ class Settings(BaseSettings):
     twilio_sms_recipients: str = ""
     twilio_sms_template: str = ""
     twilio_api_base_url: str = "https://api.twilio.com/2010-04-01"
-    infobip_enabled: bool = False
-    infobip_base_url: str = ""
-    infobip_api_key: SecretStr = SecretStr("")
-    infobip_sender: str = ""
     database_path: str = "data/service.db"
 
     @property
@@ -36,12 +31,8 @@ class Settings(BaseSettings):
         return [number.strip() for number in configured.split(",") if number.strip()]
 
     @property
-    def sms_provider_order(self) -> list[str]:
-        return [provider.strip().lower() for provider in self.sms_providers.split(",") if provider.strip()]
-
-    @property
     def sms_enabled(self) -> bool:
-        return self.twilio_enabled or self.infobip_enabled
+        return self.twilio_enabled
 
 
 @lru_cache
